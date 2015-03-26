@@ -6,7 +6,7 @@
 #include <math.h>
 #include <string.h>
 
-/* we will be using this uninitialized pointer later to store raw, uncompressd image */
+/*  we will be using this uninitialized pointer later to store raw, uncompressd image */
 unsigned char *raw_image = NULL;
 
 #define SHIT 1
@@ -16,21 +16,31 @@ typedef JCOEF FAR DCTCoeff;
 
 /***** System management defines *****/
 
-#define NOISE_MEAN 0
-#define NOISE_MAX  5
+#define NOISE_MEAN gNoiseMean
+int		gNoiseMean;
+#define NOISE_MAX  gNoiseMax
+int		gNoiseMax;
 
-#define LUMINANCE_CHANGE 20
-#define MIDDLE_LOW_FREQ_FACTOR 1
-#define LOW_FREQ_FACTOR 1
-#define LOW_PARAMS_TO_MOD 1
+#define LUMINANCE_CHANGE gLuminance
+int		gLuminance;
+#define MIDDLE_LOW_FREQ_FACTOR gMiddleLowFrequencies
+int		gMiddleLowFrequencies;
+#define LOW_FREQ_FACTOR gLowFrequencyFactor
+int		gLowFrequencyFactor;
+#define LOW_PARAMS_TO_MOD gLowParamsToMod
+int		gLowParamsToMod;
 
-#define LAMBDA 1.2
+#define LAMBDA gLambda
+double	gLambda;
 
-#define COEF_TO_CLEAR 30
+#define COEF_TO_CLEAR gCorfficientsToClear
+int		gCorfficientsToClear;
 
-#define CONTRAST_DEF 1.3
+#define CONTRAST_DEF gContrastDef
+double	gContrastDef;
 
-#define ANOMALITY_STD_VALUE 3
+#define ANOMALITY_STD_VALUE gAnomalitySTD
+int		gAnomalitySTD;
 
 /*************************************/
 
@@ -41,7 +51,7 @@ int bytes_per_pixel = 3; /* or 1 for GRACYSCALE images */
 int color_space = JCS_RGB; /* or JCS_GRAYSCALE for grayscale images OR JCS_RGB for color images*/
 
 int Seq [64] = {0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63};
-int Saved[COEF_TO_CLEAR];
+int * Saved;
 
 int coeffPlaces[][20]={
 	{1,0},
@@ -78,6 +88,7 @@ long long meanHezka2Array[3][64];
 int read_jpeg_file(char *filename) ;
 void sumAll(JCOEFPTR *blockptr_one, int component);
 void create_std_array();
+void init(); //get the paramters from the INI file
 
 void removeAnomalityByVariance(JCOEFPTR *blockptr_one, int component);
 void removeAnomalityByVariance(JCOEFPTR *blockptr_one, int component)
@@ -370,7 +381,9 @@ void addNoiseDCT(JCOEFPTR *blockptr_one, int component)
 	for(bi=0 ; bi<64 ; bi++)
 	{
 		if(bi >= 15){
-			noise_var = (!component) ? NOISE_MEAN + (rand() % (2*NOISE_MAX)) - NOISE_MAX : NOISE_MEAN + (rand() % (2*(NOISE_MAX/3))) - (NOISE_MAX/3);
+			//printf("cal noise var\n");
+			noise_var = (!component) ? NOISE_MEAN + (rand() % (2*NOISE_MAX)) - NOISE_MAX : NOISE_MEAN + (rand() % (2*((int)ceil((double)NOISE_MAX/(double)3)))) - (NOISE_MAX/3);
+			//printf("finish noise var calc\n");
 			//noise = NOISE_MEAN + (rand() % (2*NOISE_MAX)) - NOISE_MAX;
 			(*blockptr_one)[Seq[bi]] = (*blockptr_one)[Seq[bi]]+noise_var;
 		}
@@ -438,6 +451,9 @@ int main(int argc, char **argv ) {
 		printf("wrong number of params\n");
 		exit(0);
 	}
+
+	init();
+	//exit(1);
 
 	memset(meanArray, 0, 3*64*sizeof(long long));
 	memset(meanHezka2Array, 0, 3*64*sizeof(long long));
@@ -866,4 +882,155 @@ void sumAll(JCOEFPTR *blockptr_one, int component)
 		meanHezka2Array[component][bi] += ((*blockptr_one)[Seq[bi]] * (*blockptr_one)[Seq[bi]]);
 	}
 	if(!component)blocks++;
+}
+
+void init() //get the paramters from the INI
+{
+	FILE * pINI;
+	char * lineBuffer = NULL;
+	char * needle	= NULL;
+	size_t bufferLength;
+	pINI = fopen("parameters.ini", "r");
+	if (pINI == NULL) {
+		fprintf(stderr, "can't open parameters.ini\n");
+	    return;
+	}
+
+//	while(getline(&lineBuffer, &bufferLength, pINI) > 0)
+//	{
+//		needle = strrchr(lineBuffer, '\n');
+//		if(needle)*needle=0; //delete the new line from the buffer
+//		printf("Got %s from the file with length %d\n", lineBuffer, bufferLength);
+//	}
+//
+	/*
+		#define NOISE_MEAN gNoiseMean
+		int		gNoiseMean;
+		#define NOISE_MAX  5
+
+		#define LUMINANCE_CHANGE 20
+		#define MIDDLE_LOW_FREQ_FACTOR 1
+		#define LOW_FREQ_FACTOR 1
+		#define LOW_PARAMS_TO_MOD 1
+
+		#define LAMBDA gLambda
+		double	gLambda;
+
+		#define COEF_TO_CLEAR 30
+
+		#define CONTRAST_DEF 1.3
+
+		#define ANOMALITY_STD_VALUE 3
+
+	 */
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get Noise mean
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		NOISE_MEAN = atoi(needle + 1);
+		printf("The noise mean is: %d\n", NOISE_MEAN);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get Noise max
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		NOISE_MAX = atoi(needle + 1);
+		printf("The noise mean is: %d\n", NOISE_MAX);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get Luminance
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		LUMINANCE_CHANGE = atoi(needle + 1);
+		printf("The noise mean is: %d\n", LUMINANCE_CHANGE);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get MIDDLE_LOW_FREQ_FACTOR
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		MIDDLE_LOW_FREQ_FACTOR = atoi(needle + 1);
+		printf("The noise mean is: %d\n", MIDDLE_LOW_FREQ_FACTOR);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get LOW_FREQ_FACTOR
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		LOW_FREQ_FACTOR = atoi(needle + 1);
+		printf("The noise mean is: %d\n", LOW_FREQ_FACTOR);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get LOW_PARAMS_TO_MOD
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		LOW_PARAMS_TO_MOD = atoi(needle + 1);
+		printf("The noise mean is: %d\n", LOW_PARAMS_TO_MOD);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get COEF_TO_CLEAR
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		COEF_TO_CLEAR = atoi(needle + 1);
+		Saved = malloc(COEF_TO_CLEAR * sizeof(int));
+		printf("The noise mean is: %d\n", COEF_TO_CLEAR);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get CONTRAST_DEF
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		CONTRAST_DEF = atoi(needle + 1);
+		needle = strrchr(lineBuffer, '.');
+		CONTRAST_DEF += (double)atoi(needle + 1)/(double)10;
+		printf("The noise mean is: %f\n", CONTRAST_DEF);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get ANOMALITY_STD_VALUE
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		ANOMALITY_STD_VALUE = atoi(needle + 1);
+		printf("The noise mean is: %d\n", ANOMALITY_STD_VALUE);
+	}
+
+	if(getline(&lineBuffer, &bufferLength, pINI) > 0) //get Lambda
+	{
+		needle = strrchr(lineBuffer, '\n');
+		if(needle)*needle=0; //delete the new line from the buffer
+
+		needle = strrchr(lineBuffer, ':');
+		LAMBDA = atoi(needle + 1);
+		needle = strrchr(lineBuffer, '.');
+		LAMBDA += (double)atoi(needle + 1)/(double)10;
+		printf("The noise mean is: %f\n", LAMBDA);
+	}
+
+	printf("The lengfth %d\n", bufferLength);
+
+
+	fclose(pINI);
 }
